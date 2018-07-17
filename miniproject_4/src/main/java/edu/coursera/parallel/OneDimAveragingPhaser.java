@@ -111,5 +111,58 @@ public final class OneDimAveragingPhaser {
             final double[] myNew, final double[] myVal, final int n,
             final int tasks) {
 
+        Phaser ph = new Phaser(0);
+        ph.bulkRegister(tasks);
+
+
+        Thread[] threads = new Thread[tasks];
+
+        for (int ii = 0; ii < tasks; ++ii){
+            int i = ii;
+
+            threads[ii] = new Thread(()->{
+
+                double[] myNewCopy = myNew;
+                double[] myValCopy = myVal;
+
+                for (int iter= 0; iter < iterations; ++iter){
+
+                    //compute left-most and right most boundary element
+                    int left = i * (n/tasks) +1;
+                    int right = (i+1) * (n/tasks);
+                    if (right > n) right = n;
+
+
+                    myNewCopy[left] = (myValCopy[left -1] + myValCopy[left + 1])/2.0;
+                    myNewCopy[right] = (myValCopy[right -1] + myValCopy[right + 1])/2.0;
+
+                    int currentPhase = ph.arrive();
+
+                    // at this point the innermost element calculation does not effect other tasks/threads.
+                    // only the outermost side elements affect the other threads. So the inner element
+                    // computation can be done locally.
+
+                    for (int j = left + 1; j <= right -1; j++)
+                    {
+                        myNewCopy[j] = (myValCopy[j-1] + myValCopy[j+1])/2.0;
+                    }
+                    ph.awaitAdvance(currentPhase);
+
+                    double[] temp = myNewCopy;
+                    myNewCopy = myValCopy;
+                    myValCopy = temp;
+                }
+            });
+            threads[ii].start();
+        }
+
+        for (int ii = 0; ii < tasks; ii++) {
+            try {
+                threads[ii].join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
     }
 }
